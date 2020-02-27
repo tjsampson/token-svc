@@ -1,0 +1,56 @@
+[api]
+servicename = "token-svc"
+port = "4000"
+metricsport = "4001"
+allowedmethods = ["GET", "HEAD", "POST", "PUT", "OPTIONS", "DELETE"]
+allowedorigins = ["*"]
+allowedheaders = ["X-Requested-With","X-Request-ID", "jaeger-debug-id","Content-Type", "Authorization"]
+openendpoints = ["/login", "/health/ping", "/register"]
+shutdowntimeoutsecs = 120                 
+idletimeoutsecs = 90                 
+writetimeoutsecs = 30                   
+readtimeoutsecs = 5                 
+timeoutsecs = 30                 
+
+[logger]
+level = "debug"
+encoding = "json"
+outputpaths = ["stdout", "/tmp/log/tokensvc.logs"]
+erroroutputpaths = ["stderr"]
+
+[db]
+user = "postgres"
+pass = "postgres"
+host = "postgres"
+port = "5432"
+name = "postgres"
+timeout = "30"
+
+[token]
+authprivatekeypath = "/tmp/certs/app.rsa"
+authpublickeypath = "/tmp/certs/app.rsa.pub"
+issuer = "homerow.tech"
+accesstokenlifespanmins = 30
+refreshtokenlifespanmins = 10080
+accesscachekeyid = "token-access-user"
+refreshcachekeyid = "token-refresh-user"
+failedlogincachekeyid = "failed-login-user"
+failedloginattemptcachelifespanmins = 30
+failedloginattemptsmax = 5
+
+[cookie]
+hashkey = "0cebc4124b75d50a80883b5a8de596ff"
+blockkey = "29501edc6dd0a553031d0bd691ff9ae2"
+domain = "dev.homerow.tech"
+name = "homerow-auth"
+lifespandays = 7
+keyuserid = "id"
+keyemail = "email"
+keyjwtaccessid = "jti-access"
+keyjwtrefreshid = "jti-refresh"
+
+[cache]
+host = "redis"
+port = "6379"
+useraccountlockedkeyid = "account-locked-user"
+useraccountlockedlifespanmins = 60

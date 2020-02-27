@@ -1,0 +1,47 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: varlogs
+          __path__: /var/log/*log
+    pipeline_stages:
+      - match:
+          selector: '{job="varlogs"}'
+          stages:
+            - json:
+                expressions:
+                  service: service
+                  message: message
+                  request_id: request_id
+                  level: level
+                  time: time
+                  code: code
+                  user_agent: user_agent
+                  uri: uri
+                  method: method
+                  protocol: protocol
+            - timestamp:
+                format: RFC3339
+                source: time
+            - labels:
+                service: ""
+                level: ""
+                code: ""
+                user_agent: ""
+                uri: ""
+                method: ""
+                protocol: ""
+            # - output:
+            #     source: message

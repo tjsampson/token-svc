@@ -1,0 +1,7 @@
+{
+  "service": {
+    "name": "token-svc",
+    "tags": ["svc", "security"],
+    "port": 80
+  }
+}

@@ -1,0 +1,14 @@
+{{ define "__slack_title" }}
+
+Prometheus Alert: {{ .GroupLabels.alertname }}
+
+{{ end }}
+{{ define "__slack_text" }}
+
+Run Book: https://gitlab.homerow.tech/planning/wikis/operations/monitoring/runbooks/{{ .GroupLabels.alertname }}
+
+Alerts: {{ range .Alerts }}{{ .Annotations.summary }} {{ end }}
+_______________________________________________________________
+{{ end }}
+{{ define "slack.ems.text" }}{{ template "__slack_text" . }}{{ end }}
+{{ define "slack.default.title" }}{{ template "__slack_title" . }}{{ end }}

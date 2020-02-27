@@ -1,0 +1,341 @@
+version: "3.7"
+networks:
+  token-svc:
+    driver: "bridge"
+volumes:
+  prometheus-data: {}
+  grafana-data: {}
+  postgres-data: {}
+  consul-data: {}
+  bookstack-data: {}
+services:
+  nginx:
+    image: nginx:1.16.1
+    container_name: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./etc/nginx/:/etc/nginx/
+    networks:
+      - token-svc
+    depends_on:
+      - api
+  swagger:
+    image: swaggerapi/swagger-ui:latest
+    container_name: swagger
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./docs:/docs
+    environment:
+      - SWAGGER_JSON=/docs/swagger.yml
+    networks:
+      - token-svc
+  admin:
+    container_name: admin
+    restart: unless-stopped
+    build:
+      context: client
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3001:3001"
+      - "8083:8080"
+      - "8081:8081"
+    volumes:
+      - ./client:/app:cached
+    stdin_open: true
+    tty: true
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    networks:
+      - token-svc
+  api:
+    # image: golang:latest
+    container_name: api
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    working_dir: "/go/src/token-svc"
+    command: ["./scripts/build/wait-for-it.sh", "postgres:5432"]
+    # command: ["./scripts/build/wait-for-it.sh", "postgres:5432", "--", "go", "run", "./cmd/token-svc"]
+    ports:
+      - "4000:4000"
+      - "4001:4001"
+    volumes:
+      - "./:/go/src/token-svc"
+      - "/tmp/certs:/tmp/certs:ro"
+      - "/tmp/log:/tmp/log"
+    environment:
+      - GO111MODULE=on
+      - TOKEN_SVC_CONF=/go/src/token-svc/config.toml
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+    networks:
+      - token-svc
+    depends_on:
+      - redis
+      - postgres
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    networks:
+      - token-svc
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.3.2-alpine
+    container_name: redis-exporter
+    restart: unless-stopped
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+      - REDIS_EXPORTER_SKIP_TLS_VERIFICATION=yes
+    networks:
+      - token-svc
+    depends_on:
+      - redis
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    ports:
+      - 9090:9090
+    volumes:
+      - ./etc/prometheus/:/etc/prometheus/
+      - prometheus-data:/prometheus
+    networks:
+      - token-svc
+  blackbox-exporter:
+    image: prom/blackbox-exporter
+    container_name: blackbox-exporter
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/blackbox-exporter/blackbox.yml"
+    ports:
+      - "9115:9115"
+    volumes:
+      - "./etc/blackbox-exporter/:/etc/blackbox-exporter/"
+    networks:
+      - token-svc
+  cadvisor:
+    image: google/cadvisor:latest
+    container_name: cadvisor
+    restart: unless-stopped
+    ports:
+      - 8080:8080
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - token-svc
+  node-exporter:
+    image: prom/node-exporter
+    container_name: node-exporter
+    restart: unless-stopped
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - --collector.filesystem.ignored-mount-points
+      - "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
+    ports:
+      - 9100:9100
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - token-svc
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/alertmanager/config.yml"
+      - "--storage.path=/alertmanager"
+      - "--log.level=debug"
+      - "--web.external-url=http://alertmanager:9093"
+    ports:
+      - 9093:9093
+    volumes:
+      - ./etc/alertmanager/:/etc/alertmanager/
+    networks:
+      - token-svc
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - 3000:3000
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./etc/grafana/:/etc/grafana/
+    env_file:
+      - ./etc/grafana/config.monitoring
+    networks:
+      - token-svc
+  postgres-exporter:
+    image: wrouesnel/postgres_exporter:latest
+    container_name: postgres-exporter
+    restart: unless-stopped
+    ports:
+      - 9187:9187
+    environment:
+      - DATA_SOURCE_NAME=postgresql://postgres:postgres@postgres:5432/postgres?sslmode=disable
+    networks:
+      - token-svc
+    depends_on:
+      - postgres
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./etc/postgres/init.psql:/docker-entrypoint-initdb.d/1-role.sql
+    environment:
+      - POSTGRES_PASSWORD=postgres
+    networks:
+      - token-svc
+    command: "postgres -N 500" #Start postgres with 500 max connections
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    restart: unless-stopped
+    ports:
+      - "6831:6831/udp"
+      - "16686:16686"
+      - "5775:5775/udp"
+      - "6832:6832/udp"
+      - "5778:5778"
+      - "14268:14268"
+      - "9411:9411"
+      - "14269:14269"
+    environment:
+      - SPAN_STORAGE_TYPE=elasticsearch
+      - ES_SERVER_URLS=http://elasticsearch:9200
+      - ES_TAGS_AS_FIELDS_ALL=true
+    networks:
+      - token-svc
+    depends_on:
+      - elasticsearch
+  elasticsearch:
+    image: elasticsearch:7.6.0
+    container_name: elasticsearch
+    restart: unless-stopped
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - ES_JAVA_OPTS=-Xms750m -Xmx750m
+      - discovery.type=single-node
+      - http.host=0.0.0.0
+      - transport.host=127.0.0.1
+      - xpack.security.enabled=false
+    networks:
+      - token-svc
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    command: "-config.file=/etc/loki/local-config.yaml —log.level=debug"
+    networks:
+      - token-svc
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    restart: unless-stopped
+    volumes:
+      - ./etc/promtail/:/etc/promtail
+      - /tmp/log:/var/log
+    command: "-config.file=/etc/promtail/config.yaml —log.level=debug"
+    networks:
+      - token-svc
+  # kibana:
+  #   image: kibana:7.4.2
+  #   container_name: kibana
+  #   restart: unless-stopped
+  #   ports:
+  #     - "5601:5601"
+  #   networks:
+  #     - token-svc
+  # bookstack:
+  #   image: linuxserver/bookstack
+  #   container_name: bookstack
+  #   environment:
+  #     - PUID=1000
+  #     - PGID=1000
+  #     - DB_HOST=bookstack-db
+  #     - DB_USER=bookstack
+  #     - DB_PASS=yourdbpass
+  #     - DB_DATABASE=bookstackapp
+  #   volumes:
+  #     - bookstack-data:/config
+  #   ports:
+  #     - 6875:80
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - bookstack-db
+  # bookstack-db:
+  #   image: linuxserver/mariadb
+  #   container_name: bookstack-db
+  #   environment:
+  #     - PUID=1000
+  #     - PGID=1000
+  #     - MYSQL_ROOT_PASSWORD=yourdbpass
+  #     - TZ=America/Denver
+  #     - MYSQL_DATABASE=bookstackapp
+  #     - MYSQL_USER=bookstack
+  #     - MYSQL_PASSWORD=yourdbpass
+  #   volumes:
+  #     - bookstack-data:/config
+  #   restart: unless-stopped
+  # consul:
+  #   image: consul:latest
+  #   container_name: consul
+  #   restart: unless-stopped
+  #   command: "agent -server -bind 0.0.0.0 -client 0.0.0.0 -bootstrap-expect=1 -ui -config-dir=/etc/consul/consul.d"
+  #   ports:
+  #     - "8400:8400"
+  #     - "8500:8500"
+  #     - "8600:8600"
+  #     - "8600:8600/udp"
+  #   volumes:
+  #     - ./etc/consul/:/etc/consul/
+  #   networks:
+  #     - token-svc
+  # vault:
+  #   image: vault:latest
+  #   container_name: vault
+  #   restart: unless-stopped
+  #   command: "server -config=/config/vault.hcl"
+  #   depends_on:
+  #     - consul
+  #   ports:
+  #     - "8200:8200"
+  #   volumes:
+  #     - consul-data:/data
+  #     - ./etc/vault:/config
+  #     - ./scripts/vault:/scripts
+  #   environment:
+  #     - VAULT_ADDR=http://0.0.0.0:8200
+  #   cap_add:
+  #     - IPC_LOCK
+  #   networks:
+  #     - token-svc

@@ -1,0 +1,333 @@
+groups:
+- name: ServiceDown
+  interval: 5s
+  rules:
+  - alert: RedisDown
+    expr: redis_up == 0
+    for: 5s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Redis is down"
+      description: "{{ $labels.job }} job on {{ $labels.instance }} is reporting redis down (value: {{ $value }})"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000/d/64nrElFmk/docker-prometheus-monitoring?orgId=1&refresh=5s"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: PostgresDown
+    expr: pg_up == 0
+    for: 5s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Postgres is down"
+      description: "{{ $labels.job }} job on {{ $labels.instance }} is reporting postgres down (value: {{ $value }})"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000/d/64nrElFmk/docker-prometheus-monitoring?orgId=1&refresh=5s"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: ServiceDown
+    expr: up == 0
+    for: 5s
+    labels:
+      severity: critical
+    annotations:
+      summary: "{{ $labels.instance }} is down"
+      description: "{{ $labels.job }} job on {{ $labels.instance }} is reporting service down (value: {{ $value }})"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+- name: NodeLevelMetrics
+  rules:
+  - alert: HighNodeLoad
+    expr: node_load1 > 2.5
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "{{ $labels.instance }} under high load"
+      description: "{{ $labels.job }} job on {{ $labels.instance }} is reporting high load (value: {{ $value }})"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+- name: AuditMetrics
+  rules:
+  - alert: JWTAuditError
+    expr: sum(irate(audit_total{event=~"jwt.*"}[5m])) by (job,event,instance) > 0.01
+    for: 1s
+    labels:
+      severity: warning
+    annotations:
+      summary: "JWT Audit Error"
+      description: "{{ $labels.job }} job on {{ $labels.instance }} is reporting {{ $labels.event }} audit event (value: {{ $value }})"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+- name: RequestDurationMetrics
+  rules:
+  - record: "job_instance:request_duration_ms:99th"
+    expr: histogram_quantile(0.99, sum(rate(http_request_duration_histogram_ms_bucket[1m])) by (le,job,instance))
+  - record: "job_instance:request_duration_ms:95th"
+    expr: histogram_quantile(0.95, sum(rate(http_request_duration_histogram_ms_bucket[1m])) by (le,job,instance))
+  - record: "job_instance:request_duration_ms:90th"
+    expr: histogram_quantile(0.90, sum(rate(http_request_duration_histogram_ms_bucket[1m])) by (le,job,instance))    
+  - record: "job_instance:request_duration_ms:50th"
+    expr: histogram_quantile(0.50, sum(rate(http_request_duration_histogram_ms_bucket[1m])) by (le,job,instance))
+  - record: "job_instance_uri:request_duration_ms:99th"
+    expr: histogram_quantile(0.99, sum(rate(http_request_duration_histogram_ms_bucket[1m])) by (le,job,instance, uri))
+  - record: "job_instance_uri:request_duration_ms:95th"
+    expr: histogram_quantile(0.95, sum(rate(http_request_duration_histogram_ms_bucket[1m])) by (le,job,instance, uri))
+  - record: "job_instance_uri:request_duration_ms:90th"
+    expr: histogram_quantile(0.90, sum(rate(http_request_duration_histogram_ms_bucket[1m])) by (le,job,instance, uri))    
+  - record: "job_instance_uri:request_duration_ms:50th"
+    expr: histogram_quantile(0.50, sum(rate(http_request_duration_histogram_ms_bucket[1m])) by (le,job,instance,uri))    
+
+  - alert: 99thRequestDurationSpike
+    expr: job_instance:request_duration_ms:99th > 1000
+    for: 1s
+    labels:
+      severity: warning
+    annotations:
+      summary: "Request Duration 99th Percentile > 1000ms"
+      description: "Request Duration Increase over `1000ms` (`99th Percentile`)"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: 95thRequestDurationSpike
+    expr: job_instance:request_duration_ms:95th > 750
+    for: 1s
+    labels:
+      severity: warning
+    annotations:
+      summary: "Request Duration 95th Percentile > 750ms"
+      description: "Request Duration Increase over `750ms` (`95th Percentile`)"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: 90thRequestDurationSpike
+    expr: job_instance:request_duration_ms:90th > 500
+    for: 1s
+    labels:
+      severity: warning
+    annotations:
+      summary: "Request Duration 90th Percentile > 500ms"
+      description: "Request Duration Increase over `500ms` (`90th Percentile`)"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: 90thRequestDurationCritical
+    expr: job_instance:request_duration_ms:90th > 1000
+    for: 1s
+    labels:
+      severity: warning
+    annotations:
+      summary: "Request Duration 90th Percentile > 1000ms"
+      description: "Request Duration Increase over `1000ms` (`90th Percentile`)"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: 50thRequestDurationCritical
+    expr: job_instance:request_duration_ms:50th > 1000
+    for: 1s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Request Duration 50th Percentile > 1000ms"
+      description: "Request Duration Increase over `1000ms` (`50th Percentile`)"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: 99thRequestDurationURISpike
+    expr: job_instance_uri:request_duration_ms:99th > 1000
+    for: 1s
+    labels:
+      severity: warning
+    annotations:
+      summary: "URI Request Duration 99th Percentile > 1000ms"
+      description: "Request Duration Increase on `{{ $labels.uri }}` over `1000ms` (`99th Percentile`)"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: 95thRequestDurationURISpike
+    expr: job_instance_uri:request_duration_ms:95th > 750
+    for: 1s
+    labels:
+      severity: warning
+    annotations:
+      summary: "Request Duration 95th Percentile > 750ms"
+      description: "Request Duration Increase on `{{ $labels.uri }}` over `750ms` (`95th Percentile`)"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: 90thRequestDurationURISpike
+    expr: job_instance_uri:request_duration_ms:90th > 500
+    for: 1s
+    labels:
+      severity: warning
+    annotations:
+      summary: "Request Duration 90th Percentile > 500ms"
+      description: "Request Duration Increase on `{{ $labels.uri }}` over `500ms` (`90th Percentile`)"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: 90thRequestDurationURICritical
+    expr: job_instance_uri:request_duration_ms:90th > 1000
+    for: 1s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Request Duration 90th Percentile > 1000ms"
+      description: "Request Duration Increase on `{{ $labels.uri }}` over `500ms` (`90th Percentile`)"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: 50thRequestDurationURICritical
+    expr: job_instance_uri:request_duration_ms:50th > 1000
+    for: 1s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Request Duration 50th Percentile > 1000ms"
+      description: "Request Duration Increase on `{{ $labels.uri }}` over `1000ms` (`50th Percentile`)"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  
+- name: ResponseCodeMetrics
+  rules:
+  - record: "job_instance:request_rate:2xx"
+    expr: sum(rate(http_response_total{code=~"2.."}[1m])) by (job,instance) / sum(rate(http_response_total[1m])) by (job,instance)
+  - record: "job_instance:request_rate:3xx"
+    expr: sum(rate(http_response_total{code=~"3.."}[1m])) by (job,instance) / sum(rate(http_response_total[1m])) by (job,instance)
+  - record: "job_instance:request_rate:4xx"
+    expr: sum(rate(http_response_total{code=~"4.."}[1m])) by (job,instance) / sum(rate(http_response_total[1m])) by (job,instance)    
+  - record: "job_instance:request_rate:5xx"
+    expr: sum(rate(http_response_total{code=~"5.."}[1m])) by (job,instance) / sum(rate(http_response_total[1m])) by (job,instance)    
+
+  - alert: 2xxCritical
+    expr: job_instance:request_rate:2xx < 0.85
+    for: 1s
+    labels:
+      severity: critical
+    annotations:
+      summary: "2xx response codes < 85%"
+      description: "{{ $labels.job }} job on {{ $labels.instance }} is reporting 2xx decrease less than 85% (value: {{ $value }})"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: 2xxDip
+    expr: job_instance:request_rate:2xx < 0.925
+    for: 1s
+    labels:
+      severity: warning
+    annotations:
+      summary: "2xx response codes < 92.5%"
+      description: "{{ $labels.job }} job on {{ $labels.instance }} is reporting 2xx decrease less than 92.5% (value: {{ $value }})"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: 5xxSpike
+    expr: job_instance:request_rate:5xx > 0.01
+    for: 1s
+    labels:
+      severity: warning
+    annotations:
+      summary: "5xx response codes > 1%"
+      description: "{{ $labels.job }} job on {{ $labels.instance }} is reporting 5xx increase over 1% (value: {{ $value }})"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: 5xxCritical
+    expr: job_instance:request_rate:5xx > 0.05
+    for: 5s
+    labels:
+      severity: critical
+    annotations:
+      summary: "5xx response codes > 5%"
+      description: "{{ $labels.job }} job on {{ $labels.instance }} is reporting 5xx increase over 5% (value: {{ $value }})"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: 3xxSpike
+    expr: job_instance:request_rate:3xx > 0.05
+    for: 1s
+    labels:
+      severity: warning
+    annotations:
+      summary: "3xx response codes > 5%"
+      description: "{{ $labels.job }} job on {{ $labels.instance }} is reporting 3xx increase over 5% (value: {{ $value }})"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+
+  - alert: 4xxSpike
+    expr: job_instance:request_rate:4xx > 0.05
+    for: 1s
+    labels:
+      severity: warning
+    annotations:
+      summary: "4xx response codes > 5%"
+      description: "{{ $labels.job }} job on {{ $labels.instance }} is reporting 4xx increase over 5% (value: {{ $value }})"
+      runbook_link: "http://www.justfuckinggoogleit.com"
+      dashboard_link: "http://localhost:3000"
+      logs_link: http://localhost:5601/app/kibana#/discover?_g=(refreshInterval:(pause:!t,value:0),time:(from:now-15m,to:now))&_a=(columns:!(logs),index:ee931d50-0f15-11ea-82b2-6b3314441208,interval:auto,query:(language:kuery,query:''),sort:!(!(startTimeMillis,desc)))      
+      tracing_link: http://localhost:16686/search
+      value: "{{ $value }}"
+

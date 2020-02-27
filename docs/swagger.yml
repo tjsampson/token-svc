@@ -1,0 +1,67 @@
+openapi: "3.0.0"
+info:
+  description: "TokenSvc API Docs"
+  version: "0.1.0"
+  title: "TokenSvc API"
+  contact:
+    email: "admin@homerow.tech"
+host: "dev.homerow.tech"
+basePath: "/api/v2"
+tags:
+  - name: "auth"
+    description: "Everything about auth"
+schemes:
+  - "http"
+paths:
+  /auth:
+    post:
+      tags:
+        - "auth"
+      summary: "Login with creds for a"
+      description: ""
+      operationId: authLogin
+      produces:
+        - "application/json"
+      responses:
+        200:
+          description: "successful user login"
+          schema:
+            $ref: "#/definitions/Auth"
+definitions:
+  Auth:
+    type: "object"
+    properties:
+      username:
+        type: "string"
+        minLength: 1
+        maxLength: 100
+      password:
+        type: "string"
+        minLength: 14
+        maxLength: 50
+    required:
+      - username
+      - password
+  Error:
+    type: object
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+    required:
+      - code
+      - message
+  TagArray:
+    type: array
+    items:
+      $ref: "#/definitions/Tag"
+responses:
+  InvalidId:
+    description: Invalid Resource Identifier
+    schema:
+      $ref: "#/definitions/Error"
+  ResourceNotFound:
+    description: Resource Not Found
+    schema:
+      $ref: "#/definitions/Error"
