@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	uuid "github.com/satori/go.uuid"
+	"github.com/google/uuid"
 )
 
 type key int
@@ -54,7 +54,7 @@ func newRequestIDContext(req *http.Request) context.Context {
 	ctx := req.Context()
 	reqID := req.Header.Get(tokenSvcRequestHeader)
 	if reqID == "" {
-		reqID = uuid.NewV4().String()
+		reqID = uuid.New().String()
 	}
 	return context.WithValue(ctx, requestIDKey, reqID)
 }

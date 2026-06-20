@@ -3,9 +3,9 @@ package jwtservice
 import (
 	"context"
 	"crypto/rsa"
+	"errors"
 	"fmt"
-
-	"io/ioutil"
+	"os"
 	"time"
 
 	"github.com/tjsampson/token-svc/internal/config"
@@ -13,7 +13,7 @@ import (
 	"github.com/tjsampson/token-svc/internal/models/tokenmodels"
 	"github.com/tjsampson/token-svc/pkg/metrics"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/opentracing/opentracing-go"
 	"go.uber.org/zap"
 )
@@ -44,12 +44,12 @@ type (
 	}
 
 	accessTokenClaims struct {
-		*jwt.StandardClaims
+		jwt.RegisteredClaims
 		customClaims
 	}
 
 	refreshTokenClaims struct {
-		*jwt.StandardClaims
+		jwt.RegisteredClaims
 	}
 )
 
@@ -74,7 +74,7 @@ type provider struct {
 // New returns a JWT provider used for Signing and Verifying token
 func New(cfg *config.Config, logger log.Factory, tracer opentracing.Tracer, metricProvider *metrics.Provider) (Provider, error) {
 
-	signBytes, err := ioutil.ReadFile(cfg.Token.AuthPrivateKeyPath)
+	signBytes, err := os.ReadFile(cfg.Token.AuthPrivateKeyPath)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func New(cfg *config.Config, logger log.Factory, tracer opentracing.Tracer, metr
 		return nil, err
 	}
 
-	verifyBytes, err := ioutil.ReadFile(cfg.Token.AuthPublicKeyPath)
+	verifyBytes, err := os.ReadFile(cfg.Token.AuthPublicKeyPath)
 	if err != nil {
 		return nil, err
 	}
@@ -107,98 +107,78 @@ func New(cfg *config.Config, logger log.Factory, tracer opentracing.Tracer, metr
 }
 
 func (p *provider) investigateJWTError(ctx context.Context, err error) {
-	// Lets audit these JWT Errors
-	switch err.Error() {
-	case jwt.ErrInvalidKeyType.Error(),
-		jwt.ErrECDSAVerification.Error(),
-		jwt.ErrHashUnavailable.Error(),
-		jwt.ErrInvalidKey.Error(),
-		jwt.ErrKeyMustBePEMEncoded.Error(),
-		jwt.ErrNotECPrivateKey.Error(),
-		jwt.ErrNotECPublicKey.Error(),
-		jwt.ErrNotRSAPrivateKey.Error(),
-		jwt.ErrNotRSAPublicKey.Error(),
-		jwt.ErrSignatureInvalid.Error(),
-		jwt.NoneSignatureTypeDisallowedError.Error():
+	// Key/configuration errors are server-side issues — audit immediately.
+	if errors.Is(err, jwt.ErrInvalidKeyType) ||
+		errors.Is(err, jwt.ErrECDSAVerification) ||
+		errors.Is(err, jwt.ErrHashUnavailable) ||
+		errors.Is(err, jwt.ErrInvalidKey) ||
+		errors.Is(err, jwt.ErrKeyMustBePEMEncoded) ||
+		errors.Is(err, jwt.ErrNotECPrivateKey) ||
+		errors.Is(err, jwt.ErrNotECPublicKey) ||
+		errors.Is(err, jwt.ErrNotRSAPrivateKey) ||
+		errors.Is(err, jwt.ErrNotRSAPublicKey) ||
+		errors.Is(err, jwt.ErrTokenSignatureInvalid) {
 		p.logger.For(ctx).Error(auditEventJWTError, zap.Error(err), zap.Bool("audit", true))
 		p.metrics.StatAuditCount.WithLabelValues(auditEventJWTError).Inc()
-	default:
-		// Trap JWT Validation Errors
-		// A "normal" error is an Expired Token (ValidationErrorExpired)
-		// unknown/suspicious errors are basically everything else
-		// we want to audit these suspicious/unknown errors
-		// more than likely a client is messing with the token (i.e. hacker)
-		// TODO: implement audit logger (isolate audit logs from application logs)
-		if pgerr, ok := err.(*jwt.ValidationError); ok {
-			switch pgerr.Errors {
-			case jwt.ValidationErrorExpired:
-				// We don't care about Expired Tokens
-				// break out and move on
-				break
-			case
-				// Someone is messing with the token
-				// lets audit these validation errors
-				jwt.ValidationErrorAudience,
-				jwt.ValidationErrorClaimsInvalid,
-				jwt.ValidationErrorId,
-				jwt.ValidationErrorIssuedAt,
-				jwt.ValidationErrorIssuer,
-				jwt.ValidationErrorMalformed,
-				jwt.ValidationErrorNotValidYet,
-				jwt.ValidationErrorSignatureInvalid,
-				jwt.ValidationErrorUnverifiable:
-				p.logger.For(ctx).Error(auditEventJWTValidation, zap.Error(err), zap.Bool("audit", true))
-				p.metrics.StatAuditCount.WithLabelValues(auditEventJWTValidation).Inc()
-			default:
-				// Not sure this should ever happen
-				// but if it does, we should audit it
-				p.logger.For(ctx).Error(fmt.Sprintf("unknown %s", auditEventJWTValidation), zap.Error(err), zap.Bool("audit", true))
-				p.metrics.StatAuditCount.WithLabelValues(auditEventJWTValidation).Inc()
-			}
-		}
+		return
 	}
+
+	// Expired tokens are normal — clients will refresh; no audit needed.
+	if errors.Is(err, jwt.ErrTokenExpired) {
+		return
+	}
+
+	// Everything else (malformed, wrong issuer/audience, tampered claims, etc.)
+	// is suspicious and should be audited as a potential attack.
+	if errors.Is(err, jwt.ErrTokenMalformed) ||
+		errors.Is(err, jwt.ErrTokenUnverifiable) ||
+		errors.Is(err, jwt.ErrTokenInvalidAudience) ||
+		errors.Is(err, jwt.ErrTokenInvalidClaims) ||
+		errors.Is(err, jwt.ErrTokenInvalidId) ||
+		errors.Is(err, jwt.ErrTokenInvalidIssuer) ||
+		errors.Is(err, jwt.ErrTokenInvalidSubject) ||
+		errors.Is(err, jwt.ErrTokenNotValidYet) {
+		p.logger.For(ctx).Error(auditEventJWTValidation, zap.Error(err), zap.Bool("audit", true))
+		p.metrics.StatAuditCount.WithLabelValues(auditEventJWTValidation).Inc()
+		return
+	}
+
+	// Catch-all for any unclassified error — audit it.
+	p.logger.For(ctx).Error(fmt.Sprintf("unknown %s", auditEventJWTValidation), zap.Error(err), zap.Bool("audit", true))
+	p.metrics.StatAuditCount.WithLabelValues(auditEventJWTValidation).Inc()
 }
 
 func (p *provider) IsValidAccessToken(ctx context.Context, tkn string) (*accessTokenClaims, bool) {
 	p.logger.For(ctx).Info("entering jwtservice.IsValidAccessToken")
-	// Parse the token
 	token, err := jwt.ParseWithClaims(tkn, &accessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
-		// since we only use the one private key to sign the tokens,
-		// we also only use its public counter part to verify
 		p.logger.For(ctx).Info("return token key")
 		return p.verifyKey, nil
 	})
 
-	// Let's investigate the JWT error
-	// these errors could be from a potential hacker or someone misusing the token
-	// let's audit these errors (potential IP Block)
 	if err != nil {
 		p.logger.For(ctx).Error("invalid access token", zap.Error(err))
 		p.investigateJWTError(ctx, err)
 		return nil, false
 	}
 
-	// Token Claim
 	tokenClaims := token.Claims.(*accessTokenClaims)
 
 	p.logger.For(ctx).Info("leaving jwtservice.IsValidAccessToken", zap.Bool("is_valid", token.Valid))
 	return tokenClaims, token.Valid
 }
 
-
-
 func (p *provider) GenerateAccessToken(ctx context.Context, aTokenChan chan tokenmodels.TokenResult, tokenData map[string]interface{}) {
 	p.logger.For(ctx).Info("entering jwtservice.GenerateAccessToken")
-	accessToken := jwt.New(jwt.GetSigningMethod("RS256"))
+	accessToken := jwt.New(jwt.SigningMethodRS256)
 	accessToken.Claims = &accessTokenClaims{
-		&jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(time.Minute * time.Duration(p.cfg.Token.AccessTokenLifeSpanMins)).Unix(),
-			IssuedAt:  time.Now().Unix(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * time.Duration(p.cfg.Token.AccessTokenLifeSpanMins))),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			Issuer:    p.cfg.Token.Issuer,
 			Subject:   tokenData["subject"].(string),
-			Id:        tokenData["id"].(string),
+			ID:        tokenData["id"].(string),
 		},
-		customClaims{
+		customClaims: customClaims{
 			Roles: []string{"test"},
 			Name:  tokenData["name"].(string),
 		},
@@ -211,14 +191,14 @@ func (p *provider) GenerateAccessToken(ctx context.Context, aTokenChan chan toke
 
 func (p *provider) GenerateRefreshToken(ctx context.Context, rTokenChan chan tokenmodels.TokenResult, tokenData map[string]interface{}) {
 	p.logger.For(ctx).Info("entering jwtservice.GenerateRefreshToken")
-	refreshToken := jwt.New(jwt.GetSigningMethod("RS256"))
+	refreshToken := jwt.New(jwt.SigningMethodRS256)
 	refreshToken.Claims = &refreshTokenClaims{
-		&jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(time.Minute * time.Duration(p.cfg.Token.RefreshTokenLifeSpanMins)).Unix(),
-			IssuedAt:  time.Now().Unix(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * time.Duration(p.cfg.Token.RefreshTokenLifeSpanMins))),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			Issuer:    p.cfg.Token.Issuer,
 			Subject:   tokenData["subject"].(string),
-			Id:        tokenData["id"].(string),
+			ID:        tokenData["id"].(string),
 		},
 	}
 	refreshTokenSigned, err := refreshToken.SignedString(p.signKey)

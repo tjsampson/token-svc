@@ -124,7 +124,7 @@ func AuthHandler(appCtx *serviceprovider.Context) Adapter {
 				if jwtToken := extractAuthBearerToken(r); len(jwtToken) > 0 {
 					if tokenClaims, validToken := appCtx.JwtClient.IsValidAccessToken(ctx, jwtToken); validToken {
 						if cookies := appCtx.CookieOven.DecodedCookie(ctx, r); cookies != nil {
-							if cookies[appCtx.Config.Cookie.KeyJWTAccessID] == tokenClaims.Id {
+							if cookies[appCtx.Config.Cookie.KeyJWTAccessID] == tokenClaims.ID {
 								// check if user creds are valid
 								user, err := appCtx.UserRepo.ReadByEmail(ctx, cookies[appCtx.Config.Cookie.KeyEmail])
 								if err != nil {
@@ -132,8 +132,8 @@ func AuthHandler(appCtx *serviceprovider.Context) Adapter {
 									return
 								}
 								cacheJTI, err := appCtx.RedisClient.Get(ctx, fmt.Sprintf("%v-%v", appCtx.Config.Token.AccessCacheKeyID, user.ID))
-								if cacheJTI == tokenClaims.Id {
-									validAuth(tokenClaims.Id)
+								if cacheJTI == tokenClaims.ID {
+									validAuth(tokenClaims.ID)
 									return
 								}
 							}

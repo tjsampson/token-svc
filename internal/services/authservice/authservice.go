@@ -20,7 +20,7 @@ import (
 	"github.com/tjsampson/token-svc/internal/services/tracingservice"
 
 	"github.com/opentracing/opentracing-go"
-	uuid "github.com/satori/go.uuid"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -189,12 +189,12 @@ func (svc *service) Login(ctx context.Context, creds *authmodels.UserCreds) (aut
 	cookieDataChan := make(chan *http.Cookie, 1)
 
 	// Generate the New JWT IDs (GUIDs)
-	accessTokenID := uuid.NewV4().String()
-	refreshTokenID := uuid.NewV4().String()
+	accessTokenID := uuid.New().String()
+	refreshTokenID := uuid.New().String()
 
 	// Establish the cookie data
 	cookieData := map[string]string{
-		svc.cfg.Cookie.KeyUserID:       string(user.ID),
+		svc.cfg.Cookie.KeyUserID:       strconv.Itoa(user.ID),
 		svc.cfg.Cookie.KeyEmail:        user.Email,
 		svc.cfg.Cookie.KeyJWTAccessID:  accessTokenID,
 		svc.cfg.Cookie.KeyJWTRefreshID: refreshTokenID}

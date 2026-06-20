@@ -10,7 +10,7 @@ import (
 
 	"github.com/tjsampson/token-svc/internal/errors"
 
-	"github.com/go-redis/redis"
+	"github.com/redis/go-redis/v9"
 	"github.com/opentracing/opentracing-go"
 	"go.uber.org/zap"
 
@@ -64,7 +64,7 @@ func New(cfg *config.Config, logger log.Factory, tracer opentracing.Tracer) (Pro
 
 func (p *provider) Get(ctx context.Context, key string) (string, error) {
 	p.logger.For(ctx).Info("return cache", zap.String("cache_key", key))
-	val, err := p.client.Get(key).Result()
+	val, err := p.client.Get(ctx, key).Result()
 	if err == redis.Nil {
 		p.logger.For(ctx).Error("missing cache key", zap.String("cache_key", key), zap.Error(err))
 		return "", err
@@ -74,7 +74,6 @@ func (p *provider) Get(ctx context.Context, key string) (string, error) {
 	}
 	p.logger.For(ctx).Info("cache returned", zap.String("cache_value", val))
 	return val, nil
-
 }
 
 func (p *provider) Set(ctx context.Context, key string, value string, exp time.Duration) error {
@@ -89,7 +88,7 @@ func (p *provider) Set(ctx context.Context, key string, value string, exp time.D
 	}
 	p.logger.For(ctx).Info("set cache", zap.String("cache_key", key), zap.String("cache_value", value))
 
-	err := p.client.Set(key, value, exp).Err()
+	err := p.client.Set(ctx, key, value, exp).Err()
 
 	if err != nil {
 		p.logger.For(ctx).Error("failed to set cache", zap.Error(err))
@@ -110,7 +109,7 @@ func (p *provider) Ping(ctx context.Context) (string, error) {
 		ctx = opentracing.ContextWithSpan(ctx, span)
 	}
 
-	pong, err := p.client.Ping().Result()
+	pong, err := p.client.Ping(ctx).Result()
 	if err != nil {
 		p.logger.For(ctx).Error("cache ping error", zap.Error(err))
 		return "", &errors.RestError{
@@ -128,9 +127,9 @@ func (p *provider) Close() error {
 		return nil
 	}
 
-	err := p.Close()
+	err := p.client.Close()
 	if err != nil {
 		p.logger.Bg().Error("failed to close redis connection", zap.Error(err))
 	}
-	return nil
+	return err
 }

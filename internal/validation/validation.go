@@ -8,12 +8,12 @@ import (
 
 	"github.com/go-playground/locales/en"
 	ut "github.com/go-playground/universal-translator"
-	"gopkg.in/go-playground/validator.v9"
-	en_translations "gopkg.in/go-playground/validator.v9/translations/en"
+	"github.com/go-playground/validator/v10"
+	en_translations "github.com/go-playground/validator/v10/translations/en"
 )
 
 type provider struct {
-	validate *validator.Validate
+	validate   *validator.Validate
 	translator ut.Translator
 }
 
@@ -47,7 +47,7 @@ func New(v *validator.Validate) Provider {
 	})
 
 	return &provider{
-		validate: v,
+		validate:   v,
 		translator: trans,
 	}
 }
@@ -58,20 +58,15 @@ func (p *provider) Validate(model interface{}) error {
 
 		errs := []string{}
 
-		// errMsg := ""
 		for _, vErr := range validationErrors {
-			// errMsg = errMsg + fmt.Sprintf("%s %s (%s) ", vErr.Field(), vErr.Tag(), vErr.Param())
-			// errMsg = errMsg + vErr.Value().(string)
-			// errMsg = errMsg + vErr.Tag()
 			errs = append(errs, vErr.Translate(p.translator))
-			// errMsg = errMsg + "\n" + vErr.Translate(p.translator)
 		}
 
 		return &errors.RestError{
 			Code:          400,
 			Message:       fmt.Sprintf("validation error(s)"),
 			OriginalError: err,
-			Messages: errs,
+			Messages:      errs,
 		}
 	}
 	return nil

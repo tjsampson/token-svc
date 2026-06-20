@@ -20,7 +20,7 @@ import (
 	"github.com/tjsampson/token-svc/pkg/metrics"
 	"github.com/tjsampson/token-svc/pkg/version"
 
-	"gopkg.in/go-playground/validator.v9"
+	"github.com/go-playground/validator/v10"
 
 	"go.uber.org/zap"
 )
