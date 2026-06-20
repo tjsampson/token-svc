@@ -153,9 +153,9 @@ func (svc *service) setUserLock(ctx context.Context, email string) {
 }
 
 // Login accepts UserCreds and generates the following...
-//  - JWT Access Token
-// 	- JWT Refresh Token
-//	- Secure Cookie
+//   - JWT Access Token
+//   - JWT Refresh Token
+//   - Secure Cookie
 func (svc *service) Login(ctx context.Context, creds *authmodels.UserCreds) (authmodels.LoginResponse, error) {
 	svc.logger.For(ctx).Info("entering authservice.Login", zap.String("email", creds.Email))
 
@@ -194,7 +194,7 @@ func (svc *service) Login(ctx context.Context, creds *authmodels.UserCreds) (aut
 
 	// Establish the cookie data
 	cookieData := map[string]string{
-		svc.cfg.Cookie.KeyUserID:       string(user.ID),
+		svc.cfg.Cookie.KeyUserID:       strconv.Itoa(user.ID),
 		svc.cfg.Cookie.KeyEmail:        user.Email,
 		svc.cfg.Cookie.KeyJWTAccessID:  accessTokenID,
 		svc.cfg.Cookie.KeyJWTRefreshID: refreshTokenID}
@@ -202,15 +202,15 @@ func (svc *service) Login(ctx context.Context, creds *authmodels.UserCreds) (aut
 	// Establish accesssTokenData
 	accessTokenData := map[string]interface{}{
 		"subject": strconv.Itoa(user.ID),
-		"id": accessTokenID,
-		"name": user.Email,
+		"id":      accessTokenID,
+		"name":    user.Email,
 	}
 
 	// Establish refreshTokenData
 	refreshTokenData := map[string]interface{}{
 		"subject": strconv.Itoa(user.ID),
-		"id": refreshTokenID,
-		"name": user.Email,
+		"id":      refreshTokenID,
+		"name":    user.Email,
 	}
 
 	go svc.cookieOven.BakeCookie(ctx, cookieDataChan, cookieData)
